@@ -1,5 +1,5 @@
 #[allow(clippy::upper_case_acronyms)]
-enum Opcodes {
+pub enum Opcode {
     BR,   // branch
     ADD,  // add
     LD,   // load

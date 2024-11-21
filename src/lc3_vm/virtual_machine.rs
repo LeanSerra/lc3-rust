@@ -52,17 +52,17 @@ impl Default for VM {
     fn default() -> Self {
         Self {
             memory: [0; MEMORY_MAX],
-            r0: 0_u16,
-            r1: 0_u16,
-            r2: 0_u16,
-            r3: 0_u16,
-            r4: 0_u16,
-            r5: 0_u16,
-            r6: 0_u16,
-            r7: 0_u16,
+            r0: 0,
+            r1: 0,
+            r2: 0,
+            r3: 0,
+            r4: 0,
+            r5: 0,
+            r6: 0,
+            r7: 0,
             pc: 0x3000,
-            cond: 0_u16,
-            count: 0_u16,
+            cond: 0,
+            count: 0,
         }
     }
 }
@@ -71,20 +71,30 @@ impl VM {
     pub fn load_program(&mut self, file_name: &str) -> Result<(), VMError> {
         let bytes = &std::fs::read(file_name)
             .map_err(|_| VMError::LoadProgram(String::from("failed to read file")))?;
+        self.load_bytes(bytes)?;
+        Ok(())
+    }
+
+    fn load_bytes(&mut self, bytes: &[u8]) -> Result<(), VMError> {
         let mut loaded_memory = Vec::new();
         for two_bytes in bytes.chunks_exact(2) {
             let first_byte = two_bytes.first().ok_or(VMError::LoadProgram(String::from(
                 "failed to read first byte from",
             )))?;
+            // Cast into u16
+            let first_byte: u16 = (*first_byte).into();
             let second_byte = two_bytes.get(1).ok_or(VMError::LoadProgram(String::from(
                 "failed to read second byte from",
             )))?;
+            // Cast into u16
+            let second_byte: u16 = (*second_byte).into();
 
-            let mut concat_bytes = 0_u16;
-            concat_bytes |= <u8 as std::convert::Into<u16>>::into(*first_byte);
-            concat_bytes <<= 8;
-            concat_bytes |= <u8 as std::convert::Into<u16>>::into(*second_byte);
-            loaded_memory.push(concat_bytes);
+            // Join both bytes
+            let mut joined_bytes = 0_u16;
+            joined_bytes |= first_byte;
+            joined_bytes <<= 8;
+            joined_bytes |= second_byte;
+            loaded_memory.push(joined_bytes);
         }
         self.memory
             .get_mut(..loaded_memory.len())
@@ -92,7 +102,6 @@ impl VM {
                 "Failed to write into VM memory",
             )))?
             .copy_from_slice(&loaded_memory);
-
         Ok(())
     }
 }

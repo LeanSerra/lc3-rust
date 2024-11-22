@@ -28,14 +28,6 @@ pub struct VM {
     count: u16,
 }
 
-#[allow(clippy::upper_case_acronyms)]
-enum ConditionFlags {
-    POS,
-    ZRO,
-    NEG,
-    None,
-}
-
 impl Default for VM {
     fn default() -> Self {
         Self {

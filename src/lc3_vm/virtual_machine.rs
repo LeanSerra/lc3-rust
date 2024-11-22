@@ -158,8 +158,10 @@ impl VM {
                 };
                 let result = source_register_1.wrapping_add(rhs);
                 self.update_register(dr.into(), result)
-                    .map_err(|err| VMError::Execute(format!("ADD{}", err)))?;
+                    .map_err(|err| VMError::Execute(format!("ADD {}", err)))?;
 
+                self.update_flags(dr.into())
+                    .map_err(|err| VMError::Execute(format!("ADD {}", err)))?;
                 println!("{dr}");
                 println!("{sr1}");
                 println!("{mode}");

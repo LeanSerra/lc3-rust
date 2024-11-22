@@ -1,6 +1,9 @@
 use thiserror::Error;
 
-use super::opcodes::Opcode;
+use super::{
+    flags::ConditionFlags,
+    opcodes::{Opcode, OpcodeError},
+};
 const MEMORY_MAX: usize = 1 << 16;
 
 #[derive(Error, Debug)]
@@ -9,8 +12,12 @@ pub enum VMError {
     LoadProgram(String),
     #[error("Failed to increment PC: {0}")]
     ProgramCounter(String),
-    #[error("Failed to fetch instruction {0}")]
+    #[error("Failed to fetch instruction: {0}")]
     Fetch(String),
+    #[error("Failed to update flags: {0}")]
+    Flags(String),
+    #[error("Failed to decode instruction: {0}")]
+    Decode(String),
 }
 
 pub struct VM {

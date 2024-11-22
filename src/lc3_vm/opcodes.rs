@@ -6,6 +6,7 @@ pub enum OpcodeError {
     InvalidOpcode,
 }
 
+#[derive(Debug, PartialEq)]
 #[allow(clippy::upper_case_acronyms)]
 pub enum Opcode {
     BR {
@@ -214,4 +215,101 @@ impl TryFrom<u16> for Opcode {
         }
     }
     type Error = OpcodeError;
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn parse_br() -> Result<(), OpcodeError> {
+        let br = Opcode::BR {
+            n: false,
+            z: false,
+            p: true,
+            offset: 4,
+        };
+        let instruction: u16 = 0b_0000_0010_0000_0100;
+        assert_eq!(br, Opcode::try_from(instruction)?);
+        Ok(())
+    }
+
+    #[test]
+    fn parse_add_mode_0() -> Result<(), OpcodeError> {
+        let add = Opcode::ADD {
+            dr: 1,
+            sr1: 2,
+            mode: false,
+            sr2: 3,
+        };
+        let instruction: u16 = 0b_0001_0010_1000_0011;
+        assert_eq!(add, Opcode::try_from(instruction)?);
+        Ok(())
+    }
+
+    #[test]
+    fn parse_add_mode_1() -> Result<(), OpcodeError> {
+        let add = Opcode::ADD {
+            dr: 1,
+            sr1: 2,
+            mode: true,
+            sr2: 11, //imm5
+        };
+        let instruction: u16 = 0b_0001_0010_1010_1011;
+        assert_eq!(add, Opcode::try_from(instruction)?);
+        Ok(())
+    }
+
+    #[test]
+    fn parse_ld() -> Result<(), OpcodeError> {
+        let ld = Opcode::LD { dr: 4, offset: 511 };
+        let instruction = 0b_0010_1001_1111_1111;
+        assert_eq!(ld, Opcode::try_from(instruction)?);
+        Ok(())
+    }
+
+    #[test]
+    fn parse_st() -> Result<(), OpcodeError> {
+        let st = Opcode::ST { sr: 4, offset: 255 };
+        let instruction = 0b_0011_1000_1111_1111;
+        assert_eq!(st, Opcode::try_from(instruction)?);
+        Ok(())
+    }
+
+    #[test]
+    fn parse_jsr_mode_1() -> Result<(), OpcodeError> {
+        let jsr = Opcode::JSR {
+            mode: true,
+            offset: 2047,
+        };
+        let instruction = 0b_0100_1111_1111_1111;
+        assert_eq!(jsr, Opcode::try_from(instruction)?);
+        Ok(())
+    }
+
+    #[test]
+    fn parse_and_mode_0() -> Result<(), OpcodeError> {
+        let and = Opcode::AND {
+            dr: 1,
+            sr1: 2,
+            mode: false,
+            sr2: 3,
+        };
+        let instruction = 0b_0101_0010_1000_0011;
+        assert_eq!(and, Opcode::try_from(instruction)?);
+        Ok(())
+    }
+
+    #[test]
+    fn parse_and_mode_1() -> Result<(), OpcodeError> {
+        let and = Opcode::AND {
+            dr: 1,
+            sr1: 2,
+            mode: true,
+            sr2: 11, //imm5
+        };
+        let instruction: u16 = 0b_0101_0010_1010_1011;
+        assert_eq!(and, Opcode::try_from(instruction)?);
+        Ok(())
+    }
 }

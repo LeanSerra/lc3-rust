@@ -62,9 +62,8 @@ impl Default for VM {
 
 impl VM {
     pub fn load_program(&mut self, file_name: &str) -> Result<(), VMError> {
-        let bytes = &std::fs::read(file_name).map_err(|err| {
-            VMError::LoadProgram(format!("failed to read file: {}", err.to_string()))
-        })?;
+        let bytes = &std::fs::read(file_name)
+            .map_err(|err| VMError::LoadProgram(format!("failed to read file: {}", err)))?;
         self.load_bytes(bytes)?;
         Ok(())
     }
@@ -236,7 +235,9 @@ impl VM {
     }
 
     fn update_flags(&mut self, register: u16) -> Result<bool, VMError> {
-        let register_value = self.get_register(register)?;
+        let register_value = self
+            .get_register(register)
+            .map_err(|err| VMError::Flags(format!("failed to read register: {}", err)))?;
         let new_value = if (*register_value) == 0 {
             ConditionFlags::ZRO.into()
         } else if ((*register_value) >> 15) == 1 {
@@ -244,7 +245,8 @@ impl VM {
         } else {
             ConditionFlags::POS.into()
         };
-        self.update_register(9, new_value)?;
+        self.update_register(9, new_value)
+            .map_err(|err| VMError::Flags(format!("failed to update register: {}", err)))?;
         Ok(true)
     }
 

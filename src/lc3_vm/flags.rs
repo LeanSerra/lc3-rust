@@ -1,8 +1,8 @@
 #[allow(clippy::upper_case_acronyms)]
-enum ConditionFlags {
-    POS = 0,
-    ZRO = 2,
-    NEG = 4,
+pub enum ConditionFlags {
+    POS,
+    ZRO,
+    NEG,
 }
 
 impl From<ConditionFlags> for u16 {

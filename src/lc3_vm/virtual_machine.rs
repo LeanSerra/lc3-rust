@@ -1,28 +1,16 @@
-use core::{error, fmt};
+use thiserror::Error;
 
+use super::opcodes::Opcode;
 const MEMORY_MAX: usize = 1 << 16;
 
-#[derive(Debug)]
+#[derive(Error, Debug)]
 pub enum VMError {
+    #[error("Failed to load program into memory: {0}")]
     LoadProgram(String),
-}
-
-impl fmt::Display for VMError {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        match self {
-            Self::LoadProgram(context) => {
-                write!(f, "Failed to load program into memory: {context}")
-            }
-        }
-    }
-}
-
-impl error::Error for VMError {
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        match *self {
-            VMError::LoadProgram(_) => None,
-        }
-    }
+    #[error("Failed to increment PC: {0}")]
+    ProgramCounter(String),
+    #[error("Failed to fetch instruction {0}")]
+    Fetch(String),
 }
 
 pub struct VM {

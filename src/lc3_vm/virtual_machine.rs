@@ -57,31 +57,52 @@ impl VM {
 
     fn load_bytes(&mut self, bytes: &[u8]) -> Result<(), VMError> {
         let mut loaded_memory = Vec::new();
-        for two_bytes in bytes.chunks_exact(2) {
-            let first_byte = two_bytes.first().ok_or(VMError::LoadProgram(String::from(
-                "failed to read first byte from",
-            )))?;
-            // Cast into u16
-            let first_byte: u16 = (*first_byte).into();
-            let second_byte = two_bytes.get(1).ok_or(VMError::LoadProgram(String::from(
-                "failed to read second byte from",
-            )))?;
-            // Cast into u16
-            let second_byte: u16 = (*second_byte).into();
+        let mut memory_chunks = bytes.chunks_exact(2);
 
-            // Join both bytes
-            let mut joined_bytes = 0_u16;
-            joined_bytes |= first_byte;
-            joined_bytes <<= 8;
-            joined_bytes |= second_byte;
+        let origin = memory_chunks
+            .next()
+            .ok_or(VMError::LoadProgram(String::from(
+                "failed to read origin address",
+            )))?;
+        let origin = Self::join_bytes(origin).ok_or(VMError::LoadProgram(String::from(
+            "failed to read origin address",
+        )))?;
+
+        for two_bytes in memory_chunks {
+            let joined_bytes = Self::join_bytes(two_bytes)
+                .ok_or(VMError::LoadProgram(String::from("failed to read ")))?;
             loaded_memory.push(joined_bytes);
         }
+
+        let loaded_byte_count: u16 = loaded_memory.len().try_into().map_err(|_| {
+            VMError::LoadProgram(String::from("not enough memory to load the program"))
+        })?;
+
+        let last_memory_position =
+            origin
+                .checked_add(loaded_byte_count)
+                .ok_or(VMError::LoadProgram(String::from(
+                    "not enough memory to load the program",
+                )))?;
+
         self.memory
-            .get_mut(..loaded_memory.len())
+            .get_mut(origin.into()..last_memory_position.into())
             .ok_or(VMError::LoadProgram(String::from(
-                "Failed to write into VM memory",
+                "failed to write into VM memory",
             )))?
             .copy_from_slice(&loaded_memory);
         Ok(())
+    }
+
+    fn join_bytes(bytes: &[u8]) -> Option<u16> {
+        let first_byte = bytes.first()?;
+        let first_byte: u16 = (*first_byte).into();
+        let second_byte = bytes.get(1)?;
+        let second_byte: u16 = (*second_byte).into();
+        let mut joined_bytes = 0;
+        joined_bytes |= first_byte;
+        joined_bytes <<= 8;
+        joined_bytes |= second_byte;
+        Some(joined_bytes)
     }
 }

@@ -18,6 +18,12 @@ pub enum VMError {
     Flags(String),
     #[error("Failed to decode instruction: {0}")]
     Decode(String),
+    #[error("Failed to update register: {0}")]
+    GetRegister(String),
+    #[error("Failed to read register: {0}")]
+    ReadRegister(String),
+    #[error("Failed to execute instruction: {0}")]
+    Execute(String),
 }
 
 pub struct VM {
@@ -56,8 +62,9 @@ impl Default for VM {
 
 impl VM {
     pub fn load_program(&mut self, file_name: &str) -> Result<(), VMError> {
-        let bytes = &std::fs::read(file_name)
-            .map_err(|_| VMError::LoadProgram(String::from("failed to read file")))?;
+        let bytes = &std::fs::read(file_name).map_err(|err| {
+            VMError::LoadProgram(format!("failed to read file: {}", err.to_string()))
+        })?;
         self.load_bytes(bytes)?;
         Ok(())
     }
@@ -118,7 +125,7 @@ impl VM {
             .fetch()
             .ok_or(VMError::Fetch(String::from("invalid Opcode")))?;
         let opcode = Self::decode(instruction).map_err(|err| VMError::Decode(err.to_string()))?;
-        self.execute(opcode);
+        self.execute(opcode)?;
         self.increment_pc()?;
 
         Ok(())
@@ -133,7 +140,7 @@ impl VM {
         Opcode::try_from(instruction)
     }
 
-    fn execute(&mut self, opcode: Opcode) {
+    fn execute(&mut self, opcode: Opcode) -> Result<(), VMError> {
         match opcode {
             Opcode::BR { n, z, p, offset } => {
                 println!("{n}");
@@ -142,6 +149,17 @@ impl VM {
                 println!("{offset}");
             }
             Opcode::ADD { dr, sr1, mode, sr2 } => {
+                let source_register_1 = self.get_register_value(sr1.into())?;
+                // imm mode
+                let rhs = if mode {
+                    sign_extend_5_bits(sr2)
+                } else {
+                    self.get_register_value(sr2.into())?
+                };
+                let result = source_register_1.wrapping_add(rhs);
+                self.update_register(dr.into(), result)
+                    .map_err(|err| VMError::Execute(format!("ADD{}", err)))?;
+
                 println!("{dr}");
                 println!("{sr1}");
                 println!("{mode}");
@@ -203,7 +221,8 @@ impl VM {
             Opcode::TRAP { trap_vec } => {
                 println!("{trap_vec}");
             }
-        }
+        };
+        Ok(())
     }
 
     fn increment_pc(&mut self) -> Result<(), VMError> {
@@ -215,7 +234,26 @@ impl VM {
     }
 
     fn update_flags(&mut self, register: u16) -> Result<bool, VMError> {
-        let value: &mut u16 = match register {
+        let register_value = self.get_register(register)?;
+        let new_value = if (*register_value) == 0 {
+            ConditionFlags::ZRO.into()
+        } else if ((*register_value) >> 15) == 1 {
+            ConditionFlags::NEG.into()
+        } else {
+            ConditionFlags::POS.into()
+        };
+        self.update_register(9, new_value)?;
+        Ok(true)
+    }
+
+    fn update_register(&mut self, register: u16, value: u16) -> Result<(), VMError> {
+        let register_value = self.get_register(register)?;
+        *register_value = value;
+        Ok(())
+    }
+
+    fn get_register(&mut self, register: u16) -> Result<&mut u16, VMError> {
+        let register_value: &mut u16 = match register {
             0 => &mut self.r0,
             1 => &mut self.r1,
             2 => &mut self.r2,
@@ -225,22 +263,53 @@ impl VM {
             6 => &mut self.r6,
             7 => &mut self.r7,
             8 => &mut self.pc,
-            9 => return Err(VMError::Flags(String::from("wrong register"))),
+            9 => &mut self.cond,
             10 => &mut self.count,
-            _ => return Err(VMError::Flags(String::from("wrong register"))),
+            _ => return Err(VMError::GetRegister(format!("{register}"))),
         };
+        Ok(register_value)
+    }
 
-        let value_copy = *value;
-
-        *value = if *value == 0 {
-            ConditionFlags::ZRO.into()
-        } else if (*value >> 15) == 1 {
-            ConditionFlags::NEG.into()
-        } else {
-            ConditionFlags::POS.into()
+    fn get_register_value(&self, register: u16) -> Result<u16, VMError> {
+        let register_value: u16 = match register {
+            0 => self.r0,
+            1 => self.r1,
+            2 => self.r2,
+            3 => self.r3,
+            4 => self.r4,
+            5 => self.r5,
+            6 => self.r6,
+            7 => self.r7,
+            8 => self.pc,
+            9 => self.cond,
+            10 => self.count,
+            _ => return Err(VMError::ReadRegister(format!("{register}"))),
         };
-        //check if shifting is done on a copy or if it modifies the value
-        debug_assert_eq!(value_copy, *value);
-        Ok(true)
+        Ok(register_value)
+    }
+}
+
+fn sign_extend_5_bits(num: u8) -> u16 {
+    let mut num: u16 = num.into();
+    if (num >> 4) == 1 {
+        num |= 0b1111_1111_1110_0000;
+    }
+    num
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn sing_extend_5_bits_positive() {
+        let num = sign_extend_5_bits(0b_0000_0001);
+        assert_eq!(0b_0000_0000_0000_0001, num);
+    }
+
+    #[test]
+    fn sing_extend_5_bits_negative() {
+        let num = sign_extend_5_bits(0b_0000_0000_0001_1111);
+        assert_eq!(0b_1111_1111_1111_1111, num);
     }
 }

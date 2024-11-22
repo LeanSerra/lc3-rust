@@ -112,4 +112,135 @@ impl VM {
         joined_bytes |= second_byte;
         Some(joined_bytes)
     }
+
+    pub fn next_instruction(&mut self) -> Result<(), VMError> {
+        let instruction = self
+            .fetch()
+            .ok_or(VMError::Fetch(String::from("invalid Opcode")))?;
+        let opcode = Self::decode(instruction).map_err(|err| VMError::Decode(err.to_string()))?;
+        self.execute(opcode);
+        self.increment_pc()?;
+
+        Ok(())
+    }
+
+    fn fetch(&self) -> Option<u16> {
+        let instruction: u16 = *self.memory.get::<usize>(self.pc.into())?;
+        Some(instruction)
+    }
+
+    fn decode(instruction: u16) -> Result<Opcode, OpcodeError> {
+        Opcode::try_from(instruction)
+    }
+
+    fn execute(&mut self, opcode: Opcode) {
+        match opcode {
+            Opcode::BR { n, z, p, offset } => {
+                println!("{n}");
+                println!("{z}");
+                println!("{p}");
+                println!("{offset}");
+            }
+            Opcode::ADD { dr, sr1, mode, sr2 } => {
+                println!("{dr}");
+                println!("{sr1}");
+                println!("{mode}");
+                println!("{sr2}");
+            }
+            Opcode::LD { dr, offset } => {
+                println!("{dr}");
+                println!("{offset}");
+            }
+            Opcode::ST { sr, offset } => {
+                println!("{sr}");
+                println!("{offset}");
+            }
+            Opcode::JSR { mode, offset } => {
+                println!("{mode}");
+                print!("{offset}");
+            }
+            Opcode::AND { dr, sr1, mode, sr2 } => {
+                println!("{dr}");
+                println!("{sr1}");
+                println!("{mode}");
+                println!("{sr2}");
+            }
+            Opcode::LDR { dr, base_r, offset } => {
+                println!("{dr}");
+                println!("{base_r}");
+                println!("{offset}");
+            }
+            Opcode::STR { sr, base_r, offset } => {
+                println!("{sr}");
+                println!("{base_r}");
+                println!("{offset}");
+            }
+            Opcode::RTI {} => {
+                println!("unused")
+            }
+            Opcode::NOT { dr, sr } => {
+                println!("{dr}");
+                println!("{sr}");
+            }
+            Opcode::LDI { dr, offset } => {
+                println!("{dr}");
+                println!("{offset}");
+            }
+            Opcode::STI { sr, offset } => {
+                println!("{sr}");
+                println!("{offset}");
+            }
+            Opcode::JMP { base_r } => {
+                println!("{base_r}");
+            }
+            Opcode::RES {} => {
+                println!("unused");
+            }
+            Opcode::LEA { dr, offset } => {
+                println!("{dr}");
+                println!("{offset}");
+            }
+            Opcode::TRAP { trap_vec } => {
+                println!("{trap_vec}");
+            }
+        }
+    }
+
+    fn increment_pc(&mut self) -> Result<(), VMError> {
+        self.pc = self
+            .pc
+            .checked_add(1)
+            .ok_or(VMError::ProgramCounter(String::from("Overflow")))?;
+        Ok(())
+    }
+
+    fn update_flags(&mut self, register: u16) -> Result<bool, VMError> {
+        let value: &mut u16 = match register {
+            0 => &mut self.r0,
+            1 => &mut self.r1,
+            2 => &mut self.r2,
+            3 => &mut self.r3,
+            4 => &mut self.r4,
+            5 => &mut self.r5,
+            6 => &mut self.r6,
+            7 => &mut self.r7,
+            8 => &mut self.pc,
+            9 => return Err(VMError::Flags(String::from("wrong register"))),
+            10 => &mut self.count,
+            _ => return Err(VMError::Flags(String::from("wrong register"))),
+        };
+
+        let value_copy = *value;
+
+        *value = if *value == 0 {
+            ConditionFlags::ZRO.into()
+        } else if (*value >> 15) == 1 {
+            ConditionFlags::NEG.into()
+        } else {
+            ConditionFlags::POS.into()
+        };
+        //check if shifting is done on a copy or if it modifies the value
+        debug_assert_eq!(value_copy, *value);
+        Ok(true)
+    }
 }

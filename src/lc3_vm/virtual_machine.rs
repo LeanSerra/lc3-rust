@@ -149,28 +149,21 @@ impl VM {
 
     fn read_word(&mut self, address: u16) -> Result<Option<u16>, VMError> {
         if address == MR_KBSR {
-            if let Ok(key) = check_key() {
-                if key {
-                    let mut char_buffer: [u8; 1] = [0; 1];
-                    std::io::stdin()
-                        .read_exact(&mut char_buffer)
-                        .map_err(|err| {
-                            VMError::Memory(format!("failed to read keyboard: {}", err))
-                        })?;
-                    let char = char_buffer
-                        .first()
-                        .ok_or(VMError::Memory(String::from("failed to read char")))?;
-                    self.store_word(MR_KBSR, 0b1000_0000_0000_0000)
-                        .map_err(|err| {
-                            VMError::Memory(format!("memory mapped MR_KBSR: {}", err))
-                        })?;
-                    self.store_word(MR_KBDR, (*char).into()).map_err(|err| {
-                        VMError::Memory(format!("memory mapped MR_KBDR: {}", err))
-                    })?;
-                } else if self.store_word(MR_KBSR, 0x0000).is_err() {
-                    return Ok(None);
-                }
+            if let Ok(true) = check_key() {
+                let mut char_buffer: [u8; 1] = [0; 1];
+                std::io::stdin()
+                    .read_exact(&mut char_buffer)
+                    .map_err(|err| VMError::Memory(format!("failed to read keyboard: {}", err)))?;
+                let char = char_buffer
+                    .first()
+                    .ok_or(VMError::Memory(String::from("failed to read char")))?;
+                self.store_word(MR_KBSR, 0b1000_0000_0000_0000)
+                    .map_err(|err| VMError::Memory(format!("memory mapped MR_KBSR: {}", err)))?;
+                self.store_word(MR_KBDR, (*char).into())
+                    .map_err(|err| VMError::Memory(format!("memory mapped MR_KBDR: {}", err)))?;
             } else {
+                self.store_word(MR_KBSR, 0x0000)
+                    .map_err(|err| VMError::Memory(format!("memory mapped MR_KBSR: {}", err)))?;
                 return Ok(None);
             }
         }

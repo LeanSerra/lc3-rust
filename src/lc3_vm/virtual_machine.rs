@@ -1,10 +1,23 @@
-use thiserror::Error;
-
 use super::{
     flags::ConditionFlags,
     opcodes::{Opcode, OpcodeError},
+    traps::Trap,
 };
+use nix::sys::{
+    select,
+    time::{TimeVal, TimeValLike},
+};
+use std::{
+    fmt::Debug,
+    fs::File,
+    io::{self, Read, Write},
+    os::fd::AsFd,
+};
+use thiserror::Error;
+
 const MEMORY_MAX: usize = 1 << 16;
+const MR_KBSR: u16 = 0xFE00;
+const MR_KBDR: u16 = 0xFE02;
 
 #[derive(Error, Debug)]
 pub enum VMError {
@@ -135,6 +148,33 @@ impl VM {
     }
 
     fn read_word(&mut self, address: u16) -> Result<Option<u16>, VMError> {
+        if address == MR_KBSR {
+            if let Ok(key) = check_key() {
+                if key {
+                    let mut char_buffer: [u8; 1] = [0; 1];
+                    std::io::stdin()
+                        .read_exact(&mut char_buffer)
+                        .map_err(|err| {
+                            VMError::Memory(format!("failed to read keyboard: {}", err))
+                        })?;
+                    let char = char_buffer
+                        .first()
+                        .ok_or(VMError::Memory(String::from("failed to read char")))?;
+                    self.store_word(MR_KBSR, 0b1000_0000_0000_0000)
+                        .map_err(|err| {
+                            VMError::Memory(format!("memory mapped MR_KBSR: {}", err))
+                        })?;
+                    self.store_word(MR_KBDR, (*char).into()).map_err(|err| {
+                        VMError::Memory(format!("memory mapped MR_KBDR: {}", err))
+                    })?;
+                } else if self.store_word(MR_KBSR, 0x0000).is_err() {
+                    return Ok(None);
+                }
+            } else {
+                return Ok(None);
+            }
+        }
+
         if let Some(word) = self.memory.get::<usize>(address.into()) {
             Ok(Some(*word))
         } else {
@@ -393,7 +433,122 @@ impl VM {
                     .map_err(|err| VMError::Execute(format!("LEA: {}", err)))?;
             }
             Opcode::TRAP { trap_vec } => {
-                todo!("In next PR")
+                let trap_code = Trap::try_from(trap_vec)
+                    .map_err(|err| VMError::Execute(format!("TRAP: {}", err)))?;
+
+                match trap_code {
+                    Trap::GetC => {
+                        // Read char from stdin into buffer
+                        let mut char_buffer: [u8; 1] = [0; 1];
+                        std::io::stdin()
+                            .read_exact(&mut char_buffer)
+                            .map_err(|err| VMError::Execute(format!("TRAP GETC: {}", err)))?;
+                        let read_char = char_buffer.first().ok_or(VMError::Execute(
+                            String::from("TRAP GETC: failed to read char"),
+                        ))?;
+                        // Save char into R0
+                        self.update_register(0, (*read_char).into())
+                            .map_err(|err| VMError::Execute(format!("TRAP GETC: {}", err)))?;
+
+                        self.update_flags(0)
+                            .map_err(|err| VMError::Execute(format!("TRAP GETC: {}", err)))?;
+                    }
+                    Trap::Out => {
+                        // Read char from R0
+                        let word = self
+                            .get_register_value(0)
+                            .map_err(|err| VMError::Execute(format!("TRAP OUT: {}", err)))?;
+
+                        let read_char: u8 = word
+                            .try_into()
+                            .map_err(|err| VMError::Execute(format!("TRAP OUT: {}", err)))?;
+
+                        let read_char: char = read_char.into();
+                        print!("{read_char}");
+                        io::stdout()
+                            .flush()
+                            .map_err(|err| VMError::Execute(format!("TRAP OUT: {}", err)))?;
+                    }
+                    Trap::Puts => {
+                        // Get starting address of first char
+                        let mut char_address = self
+                            .get_register_value(0)
+                            .map_err(|err| VMError::Execute(format!("TRAP PUTS: {}", err)))?;
+                        while let Ok(Some(c)) = self.read_word(char_address) {
+                            // The string ends when the read word is 0x0000
+                            if c == 0x0000 {
+                                break;
+                            }
+                            let c: u8 = c
+                                .try_into()
+                                .map_err(|err| VMError::Execute(format!("TRAP PUTS: {}", err)))?;
+                            let c: char = c.into();
+                            print!("{}", c);
+                            // Increment the memory address
+                            char_address = char_address.wrapping_add(1);
+                        }
+                        io::stdout()
+                            .flush()
+                            .map_err(|err| VMError::Execute(format!("TRAP PUTS: {}", err)))?;
+                    }
+                    Trap::In => {
+                        // Prompt the user for a char
+                        print!("Enter a character: ");
+                        let mut char_buffer: [u8; 1] = [0; 1];
+                        // Read char into buffer
+                        std::io::stdin()
+                            .read_exact(&mut char_buffer)
+                            .map_err(|err| VMError::Execute(format!("TRAP IN: {}", err)))?;
+
+                        let c_u8 = char_buffer.first().ok_or(VMError::Execute(String::from(
+                            "TRAP IN: failed to read char",
+                        )))?;
+                        let c_char: char = (*c_u8).into();
+                        // Echo the character
+                        print!("{c_char}");
+                        // Save char into R0
+                        self.update_register(0, (*c_u8).into())
+                            .map_err(|err| VMError::Execute(format!("TRAP IN: {}", err)))?;
+
+                        self.update_flags(0)
+                            .map_err(|err| VMError::Execute(format!("TRAP IN: {}", err)))?;
+                        io::stdout()
+                            .flush()
+                            .map_err(|err| VMError::Execute(format!("TRAP IN: {}", err)))?;
+                    }
+                    Trap::Putsp => {
+                        // Get starting address of first two chars
+                        let mut char_address = self
+                            .get_register_value(0)
+                            .map_err(|err| VMError::Execute(format!("TRAP PUTSP: {}", err)))?;
+                        while let Ok(Some(c)) = self.read_word(char_address) {
+                            // The string ends when the read word is 0x0000
+                            if c == 0x0000 {
+                                break;
+                            }
+                            // Get the first char
+                            let c1: u8 = ((c & 0b_1111_1111_0000_0000) >> 8)
+                                .try_into()
+                                .map_err(|err| VMError::Execute(format!("TRAP PUSTP: {}", err)))?;
+                            // Get the second char
+                            let c2: u8 = (c & 0b_0000_0000_1111_1111)
+                                .try_into()
+                                .map_err(|err| VMError::Execute(format!("TRAP PUSTP: {}", err)))?;
+
+                            print!("{}", c1);
+                            print!("{}", c2);
+                            // Increment memory address
+                            char_address = char_address.wrapping_add(1);
+                        }
+                        io::stdout()
+                            .flush()
+                            .map_err(|err| VMError::Execute(format!("TRAP PUTSP: {}", err)))?;
+                    }
+                    Trap::Halt => {
+                        // Stop vm execution
+                        self.running = false;
+                    }
+                }
             }
         };
         Ok(())
@@ -507,6 +662,15 @@ fn sign_extend_11_bits(mut num: u16) -> u16 {
         num |= 0b1111_1000_0000_0000;
     }
     num
+}
+
+fn check_key() -> Result<bool, VMError> {
+    let stdin_fd = File::open("/dev/stdin")
+        .map_err(|err| VMError::Execute(format!("Failed to open stdin: {}", err)))?;
+    let mut fd = select::FdSet::new();
+    fd.insert(AsFd::as_fd(&stdin_fd));
+    let mut timeout = TimeVal::seconds(0);
+    Ok(select::select(None, &mut fd, None, None, &mut timeout).is_ok())
 }
 
 #[cfg(test)]

@@ -162,9 +162,9 @@ impl VM {
                     .get_flags()
                     .map_err(|err| VMError::Execute(format!("BR {}", err)))?;
                 let offset = sign_extend_9_bits(offset);
-                if n && flags_value == ConditionFlags::NEG.into()
-                    || z && flags_value == ConditionFlags::ZRO.into()
-                    || p && flags_value == ConditionFlags::POS.into()
+                if (n && flags_value == ConditionFlags::NEG.into())
+                    || (z && flags_value == ConditionFlags::ZRO.into())
+                    || (p && flags_value == ConditionFlags::POS.into())
                 {
                     self.add_to_pc(offset);
                 }

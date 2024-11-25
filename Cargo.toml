@@ -1,0 +1,23 @@
+[package]
+name = "lc3-rust"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+nix = { version="0.29.0", features=["poll", "term"] }
+thiserror = "2.0.3"
+
+[lints.clippy]
+panic = "deny"
+unnecessary_cast = "warn"
+deref_by_slicing = "warn"
+indexing_slicing = "warn"
+manual_unwrap_or = "warn"
+manual_unwrap_or_default = "warn"
+as_conversions = "deny"
+unwrap_used = "deny"
+expect_used = "deny"
+
+arithmetic_side_effects = "deny"
+overflow_check_conditional = "warn"
+manual_saturating_arithmetic = "warn"
